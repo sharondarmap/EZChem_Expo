@@ -1,6 +1,6 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Theme tokens (migrated from the web app).
+ * Exports: Colors (light/dark), AppColors (web palette), Fonts, Spacing, Radii, Gradients, and a default Theme object.
  */
 
 import { Platform } from 'react-native';
@@ -8,6 +8,7 @@ import { Platform } from 'react-native';
 const tintColorLight = '#0a7ea4';
 const tintColorDark = '#fff';
 
+// Existing light/dark palette used by template (kept for compatibility)
 export const Colors = {
   light: {
     text: '#11181C',
@@ -25,6 +26,45 @@ export const Colors = {
     tabIconDefault: '#9BA1A6',
     tabIconSelected: tintColorDark,
   },
+};
+
+// Web app color tokens (from your index.css & profile.css)
+export const AppColors = {
+  brand: '#64b5f6',
+  brandStrong: '#42a5f5',
+  backgroundStart: '#1a1a2e',
+  backgroundMid: '#16213e',
+  backgroundEnd: '#0f3460',
+  text: '#ffffff',
+  muted: '#b0bec5',
+  success: '#66bb6a',
+  warning: '#ffa726',
+  danger: '#ef5350',
+  glass: 'rgba(255,255,255,0.05)',
+  glassStrong: 'rgba(255,255,255,0.08)',
+  borderGlass: 'rgba(255,255,255,0.12)',
+  borderGlassStrong: 'rgba(255,255,255,0.18)',
+  shadowBrand: 'rgba(100, 181, 246, 0.22)',
+};
+
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+};
+
+export const Radii = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  round: 9999,
+};
+
+export const Gradients = {
+  hero: [AppColors.brand, AppColors.brandStrong],
+  background: [AppColors.backgroundStart, AppColors.backgroundMid, AppColors.backgroundEnd],
 };
 
 export const Fonts = Platform.select({
@@ -51,3 +91,14 @@ export const Fonts = Platform.select({
     mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   },
 });
+
+// A convenience Theme object for easy imports
+const Theme = {
+  colors: AppColors,
+  spacing: Spacing,
+  radii: Radii,
+  gradients: Gradients,
+  fonts: Fonts,
+};
+
+export default Theme;
