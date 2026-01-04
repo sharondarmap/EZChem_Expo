@@ -1,6 +1,6 @@
 import { useRouter, useSegments } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors as themeColors } from '../src/constants/theme';
 import { getUser, isLoggedIn, logout, onAuthStateChanged } from '../src/services/auth';
 
@@ -48,8 +48,10 @@ export default function Navbar() {
         <TouchableOpacity style={styles.toggle} onPress={() => setOpen((s) => !s)}>
           <Text style={styles.toggleText}>☰</Text>
         </TouchableOpacity>
+      </View>
 
-        <View style={[styles.menu, open ? styles.menuOpen : null]}>
+      {open && (
+        <View style={styles.dropdownMenu}>
           {links.map((l) => {
             const active = current === l.key;
             return (
@@ -57,44 +59,45 @@ export default function Navbar() {
                 key={l.key}
                 onPress={() => {
                   setOpen(false);
-                  // `expo-router` has strict path types; cast to any for dynamic links
                   router.push(l.href as any);
                 }}
                 style={[
-                  styles.link,
-                  active ? styles.linkActive : null,
-                  open ? styles.linkMobile : null,
+                  styles.dropdownLink,
+                  active ? styles.dropdownLinkActive : null,
                 ]}
               >
-                <Text style={[styles.linkText, active ? styles.linkTextActive : null]}>{l.label}</Text>
+                <Text style={[styles.dropdownLinkText, active ? styles.dropdownLinkTextActive : null]}>{l.label}</Text>
               </TouchableOpacity>
             );
           })}
 
+          <View style={styles.dropdownDivider} />
+
           <View style={styles.authSlot}>
             {userEmail ? (
               <>
-                <TouchableOpacity onPress={() => router.push('/(tabs)/profile' as any)} style={styles.link}>
-                  <Text style={styles.linkText}>{userEmail.split('@')[0]}</Text>
+                <TouchableOpacity onPress={() => router.push('/profile' as any)} style={styles.dropdownLink}>
+                  <Text style={styles.dropdownLinkText}>{userEmail.split('@')[0]}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={async () => {
                     await logout();
+                    setOpen(false);
                     router.push('/login' as any);
                   }}
-                  style={[styles.logoutBtn]}
+                  style={styles.dropdownLogoutBtn}
                 >
-                  <Text style={styles.logoutText}>Keluar</Text>
+                  <Text style={styles.dropdownLogoutText}>Keluar</Text>
                 </TouchableOpacity>
               </>
             ) : (
-              <TouchableOpacity onPress={() => router.push('/login' as any)} style={styles.link}>
-                <Text style={styles.linkText}>Masuk</Text>
+              <TouchableOpacity onPress={() => router.push('/login' as any)} style={styles.dropdownLink}>
+                <Text style={styles.dropdownLinkText}>Masuk</Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -108,7 +111,6 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   container: {
-    // full-width container for mobile and web
     width: '100%',
     alignSelf: 'stretch',
     paddingHorizontal: 16,
@@ -123,66 +125,65 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   toggle: {
-    // show hamburger on native platforms; hidden on web by default
-    display: Platform.OS === 'web' ? 'none' as any : 'flex',
     padding: 8,
-  },
-  menuOpen: {
-    position: 'absolute',
-    top: 56,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(26,26,46,0.98)',
-    padding: 12,
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    zIndex: 2000,
-  },
-  linkMobile: {
-    width: '100%',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    marginLeft: 0,
-    borderRadius: 6,
   },
   toggleText: {
     color: '#e3f2fd',
-    fontSize: 20,
+    fontSize: 24,
   },
-  menu: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  // Dropdown menu styles
+  dropdownMenu: {
+    position: 'absolute',
+    top: 56,
+    right: 0,
+    left: 0,
+    backgroundColor: 'rgba(26,26,46,0.98)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    zIndex: 999,
   },
-  link: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginLeft: 8,
+  dropdownLink: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
   },
-  linkText: {
-    color: '#fff',
-    fontSize: 14,
+  dropdownLinkActive: {
+    backgroundColor: 'rgba(100,181,246,0.15)',
   },
-  linkActive: {
-    backgroundColor: 'rgba(100,181,246,0.2)',
+  dropdownLinkText: {
+    color: '#e3f2fd',
+    fontSize: 15,
   },
-  linkTextActive: {
+  dropdownLinkTextActive: {
     color: themeColors.light.tint,
+    fontWeight: '600',
   },
+
+  dropdownDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginVertical: 8,
+  },
+
   authSlot: {
-    marginLeft: 12,
-    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  dropdownLogoutBtn: {
+    backgroundColor: '#f44336',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginTop: 10,
     alignItems: 'center',
   },
-  logoutBtn: {
-    backgroundColor: '#f44336',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    marginLeft: 8,
-  },
-  logoutText: {
+  dropdownLogoutText: {
     color: '#fff',
     fontWeight: '600',
+    fontSize: 14,
   },
 });
