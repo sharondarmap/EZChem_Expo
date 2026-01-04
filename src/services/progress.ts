@@ -6,9 +6,9 @@ export async function reportLearningProgress(
 ) {
   return API.fetchJSON("/progress/learning", {
     method: "POST",
-    body: {
+    body: JSON.stringify({
       module: moduleTitle,
       action,
-    },
+    }),
   })
 }
