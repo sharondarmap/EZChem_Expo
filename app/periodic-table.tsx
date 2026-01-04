@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Theme from '../src/constants/theme';
 
 // Periodic table data - Complete 118 elements
 const ELEMENTS = [
@@ -152,21 +151,74 @@ export default function PeriodicTable() {
 
   const getElementColor = (category: string): string => CATEGORIES[category]?.color || '#78909c';
 
-  const renderElement = (element: typeof ELEMENTS[0]) => (
-    <TouchableOpacity
-      key={element.number}
-      onPress={() => {
-        setSelectedElement(element);
-        setShowInfo(true);
-      }}
-      style={[styles.element, { backgroundColor: getElementColor(element.category) }]}
-    >
-      <Text style={styles.elementNumber}>{element.number}</Text>
-      <Text style={styles.elementSymbol}>{element.symbol}</Text>
-      <Text style={styles.elementName}>{element.name}</Text>
-      <Text style={styles.elementMass}>{element.mass}</Text>
-    </TouchableOpacity>
-  );
+  // Create 2D layout (7 periods x 18 groups)
+  const buildTableLayout = () => {
+    const layout: (typeof ELEMENTS[0] | null)[][] = Array(9).fill(null).map(() => Array(18).fill(null));
+    
+    ELEMENTS.forEach((el) => {
+      let row = el.period - 1;
+      let col = el.group - 1;
+      
+      // Handle lanthanides (period 6, group 3 -> show in row 8)
+      if (el.category === 'lanthanide') {
+        row = 8;
+        col = (el.number - 57); // 57 is La, 58-71 are lanthanides
+      }
+      
+      // Handle actinides (period 7, group 3 -> show in row 9)
+      if (el.category === 'actinide') {
+        // This would be row 9 but we'll show them inline
+        row = el.period - 1;
+        col = el.group - 1;
+      }
+      
+      if (row < 9 && col < 18 && col >= 0) {
+        layout[row][col] = el;
+      }
+    });
+    
+    return layout;
+  };
+
+  const tableLayout = buildTableLayout();
+  const cellSize = 70;
+
+  const renderElement = (element: typeof ELEMENTS[0] | null) => {
+    if (!element) {
+      return (
+        <View
+          style={[
+            styles.cell,
+            { width: cellSize, height: cellSize },
+          ]}
+        />
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        key={element.number}
+        onPress={() => {
+          setSelectedElement(element);
+          setShowInfo(true);
+        }}
+        style={[
+          styles.cell,
+          styles.elementCell,
+          { 
+            backgroundColor: getElementColor(element.category),
+            width: cellSize,
+            height: cellSize,
+          },
+        ]}
+      >
+        <Text style={styles.elementNumber}>{element.number}</Text>
+        <Text style={styles.elementSymbol}>{element.symbol}</Text>
+        <Text style={styles.elementName}>{element.name}</Text>
+        <Text style={styles.elementMass}>{element.mass}</Text>
+      </TouchableOpacity>
+    );
+  };
 
   const legendItems = Object.entries(CATEGORIES).map(([key, { label, color }]) => (
     <View key={key} style={styles.legendItem}>
@@ -177,17 +229,27 @@ export default function PeriodicTable() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={true}>
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Tabel Periodik Interaktif</Text>
-          <Text style={styles.subtitle}>Klik pada unsur untuk melihat informasi detail</Text>
+          <Text style={styles.subtitle}>Scroll untuk melihat semua unsur. Klik untuk detail</Text>
         </View>
 
-        {/* Periodic Table Grid */}
-        <View style={styles.tableContainer}>
-          {ELEMENTS.map(renderElement)}
-        </View>
+        {/* Horizontal Scrollable Grid */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.horizontalScroll}>
+          <View style={styles.tableContainer}>
+            {tableLayout.map((row, rowIdx) => (
+              <View key={`row-${rowIdx}`} style={styles.row}>
+                {row.map((element, colIdx) => (
+                  <View key={`${rowIdx}-${colIdx}`}>
+                    {renderElement(element)}
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        </ScrollView>
 
         {/* Legend */}
         <View style={styles.legend}>
@@ -249,52 +311,55 @@ export default function PeriodicTable() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: Theme.colors.backgroundMid },
-  container: { flex: 1, padding: 20, backgroundColor: '#0f172a' },
-  header: { alignItems: 'center', marginBottom: 30 },
-  title: { fontSize: 28, color: '#64b5f6', fontWeight: '700', marginBottom: 10 },
-  subtitle: { color: '#b0bec5', fontSize: 14 },
+  safeArea: { flex: 1, backgroundColor: '#0f172a' },
+  container: { flex: 1, paddingHorizontal: 16, backgroundColor: '#0f172a' },
+  header: { alignItems: 'center', marginVertical: 20 },
+  title: { fontSize: 28, color: '#64b5f6', fontWeight: '700', marginBottom: 8 },
+  subtitle: { color: '#b0bec5', fontSize: 13 },
+
+  // Horizontal scroll for periodic table
+  horizontalScroll: {
+    marginBottom: 24,
+  },
 
   // Periodic table grid
   tableContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
     gap: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    padding: 15,
-    borderRadius: 16,
-    marginBottom: 30,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
   },
-  element: {
-    width: '18.5%',
-    aspectRatio: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  row: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  cell: {
     borderRadius: 6,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 4,
-    minHeight: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  elementNumber: { fontSize: 10, opacity: 0.8, position: 'absolute', top: 2, left: 4 },
-  elementSymbol: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  elementName: { fontSize: 8, opacity: 0.9, color: '#fff', textAlign: 'center' },
-  elementMass: { fontSize: 7, opacity: 0.7, position: 'absolute', bottom: 2, right: 4 },
+  elementCell: {
+    padding: 6,
+  },
+  elementNumber: { fontSize: 9, opacity: 0.7, position: 'absolute', top: 2, left: 3 },
+  elementSymbol: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  elementName: { fontSize: 7, opacity: 0.8, color: '#fff', textAlign: 'center', marginTop: 1 },
+  elementMass: { fontSize: 6, opacity: 0.6, position: 'absolute', bottom: 2, right: 3 },
 
   // Legend
   legend: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-    padding: 20,
+    padding: 16,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 12,
     marginBottom: 20,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '48%' },
-  legendColor: { width: 20, height: 20, borderRadius: 4, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.3)' },
-  legendLabel: { color: '#fff', fontSize: 12 },
+  legendColor: { width: 18, height: 18, borderRadius: 3, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.3)' },
+  legendLabel: { color: '#e3f2fd', fontSize: 11 },
 
   // Modal
   modalOverlay: {
@@ -336,5 +401,5 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   infoLabel: { fontWeight: '700', color: '#64b5f6', fontSize: 12 },
-  infoValue: { fontWeight: '700', color: '#fff' },
+  infoValue: { fontWeight: '700', color: '#fff', fontSize: 12 },
 });
