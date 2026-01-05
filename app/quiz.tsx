@@ -18,7 +18,7 @@ function shuffleArray<T>(arr: T[]) {
   return a;
 }
 
-function shuffleQuestionOptions(q: { options: string[]; correctAnswer: number }) {
+function shuffleQuestionOptions(q: (typeof QUIZ_QUESTIONS)[number]) {
   const correctText = q.options[q.correctAnswer];
   const shuffledOptions = shuffleArray(q.options);
   const newCorrectIndex = shuffledOptions.findIndex((opt) => opt === correctText);
@@ -60,12 +60,12 @@ export default function Quiz() {
 
     const moduleQuestions = moduleIndex === -1 ? QUIZ_QUESTIONS : getQuestionsByModule(moduleIndex);
 
-    // ✅ shuffle opsi jawaban (biar correctAnswer ikut ke-update)
+    //shuffle opsi jawaban
     setQuestions(prepareQuestions(moduleQuestions));
 
     setScreen("start");
 
-    // reset attempt state
+    //reset attempt state
     setCurrentQuestionIndex(0);
     setScore(0);
     setAnswered(false);
@@ -101,10 +101,10 @@ export default function Quiz() {
     try {
       setResultReported(true);
 
-      // ✅ backend progress.py butuh: module, score, total
+      //backend progress.py butuh: module, score, total
       await reportQuizResult(moduleLabel || "Kuis", score, questions.length);
     } catch (error) {
-      // kalau gagal, boleh dicoba lagi kalau user restart attempt
+      //kalau gagal, boleh dicoba lagi kalau user restart attempt
       setResultReported(false);
       console.log("Progress tracking failed:", error);
     }
