@@ -2,8 +2,17 @@
 import { ELEMENTS } from "@/src/data/elements";
 import { reportGameProgress } from "@/src/services/progress";
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Animated,
+  Easing,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface EmptySlot {
   row: number;
@@ -14,6 +23,8 @@ interface EmptySlot {
 
 type TableLayout = ((typeof ELEMENTS)[0] | null)[][];
 
+type FeedbackType = "info" | "success" | "error";
+
 export default function PeriodicTableGame() {
   const router = useRouter();
 
@@ -22,11 +33,47 @@ export default function PeriodicTableGame() {
   const [draggableElements, setDraggableElements] = useState<(typeof ELEMENTS)[0][]>([]);
   const [placedElements, setPlacedElements] = useState<Record<string, number>>({});
   const [feedback, setFeedback] = useState("");
+  const [feedbackType, setFeedbackType] = useState<FeedbackType>("info");
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [gameComplete, setGameComplete] = useState(false);
 
+  // ✅ popup completion
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+
   // ✅ guard supaya report completion cuma sekali per “run”
   const [reportedCompletion, setReportedCompletion] = useState(false);
+
+  // ===== Feedback animation (untuk correct/incorrect) =====
+  const shakeX = useRef(new Animated.Value(0)).current; // error shake
+  const pop = useRef(new Animated.Value(0)).current; // success pop
+
+  const runShake = () => {
+    shakeX.setValue(0);
+    Animated.sequence([
+      Animated.timing(shakeX, { toValue: 1, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -1, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 1, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: -1, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeX, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const runPop = () => {
+    pop.stopAnimation();
+    pop.setValue(0);
+    Animated.sequence([
+      Animated.timing(pop, { toValue: 1, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pop, { toValue: 0, duration: 160, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  };
+
+  useEffect(() => {
+    if (!feedback) return;
+
+    if (feedbackType === "error") runShake();
+    if (feedbackType === "success") runPop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedbackType, feedback]);
 
   useEffect(() => {
     initializeGame();
@@ -36,9 +83,11 @@ export default function PeriodicTableGame() {
   const initializeGame = () => {
     setPlacedElements({});
     setFeedback("");
+    setFeedbackType("info");
     setGameComplete(false);
     setSelectedSlot(null);
     setReportedCompletion(false);
+    setShowCompleteModal(false);
 
     // Create 2D layout (7 periods x 18 groups)
     const layout: (typeof ELEMENTS[0] | null)[][] = Array(7)
@@ -100,11 +149,8 @@ export default function PeriodicTableGame() {
 
     try {
       setReportedCompletion(true);
-      // ✅ metric harus "completed" supaya kebaca di profile.tsx (filter completed)
-      // ✅ game name dibikin konsisten juga
       await reportGameProgress("periodic-table", "completed", 1);
     } catch {
-      // kalau gagal, boleh dibuka lagi untuk retry di run yang sama
       setReportedCompletion(false);
     }
   };
@@ -116,21 +162,32 @@ export default function PeriodicTableGame() {
     if (an === slot.correctAn) {
       const newPlaced = { ...placedElements, [slotKey]: an };
       setPlacedElements(newPlaced);
+
       setFeedback("✓ Correct!");
+      setFeedbackType("success");
       setSelectedSlot(null);
 
       // Check if all slots are filled
       if (Object.keys(newPlaced).length === emptySlots.length) {
         setGameComplete(true);
-        setFeedback("🎉 You completed the periodic table!");
+        setShowCompleteModal(true);
         void maybeReportCompletion();
+
+        // optional: bersihin feedback biar ga tabrakan sama popup
+        setTimeout(() => {
+          setFeedback("");
+          setFeedbackType("info");
+        }, 400);
+        return;
       }
     } else {
       setFeedback("✗ Incorrect. Try again!");
+      setFeedbackType("error");
     }
 
     setTimeout(() => {
       setFeedback("");
+      setFeedbackType("info");
     }, 1500);
   };
 
@@ -153,8 +210,44 @@ export default function PeriodicTableGame() {
     return draggableElements.filter((el) => !placed.has(el.an));
   }, [draggableElements, placedElements]);
 
+  // feedback animated style
+  const shakeTranslate = shakeX.interpolate({
+    inputRange: [-1, 1],
+    outputRange: [-8, 8],
+  });
+
+  const popScale = pop.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.02],
+  });
+
   return (
     <View style={styles.container}>
+      {/* ✅ Completion Popup */}
+      <Modal
+        visible={showCompleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCompleteModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <TouchableOpacity
+              onPress={() => setShowCompleteModal(false)}
+              style={styles.modalClose}
+              accessibilityLabel="Close"
+            >
+              <Text style={styles.modalCloseText}>✕</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.modalTitle}>🎉 You completed the periodic table!</Text>
+            <Text style={styles.modalSub}>
+              {reportedCompletion ? "✅ Progress tersimpan." : "Menyimpan progress..."}
+            </Text>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
@@ -167,11 +260,31 @@ export default function PeriodicTableGame() {
           </View>
         </View>
 
-        {/* Feedback */}
+        {/* Feedback (colored + shake/pop) */}
         {feedback ? (
-          <View style={styles.feedbackBox}>
-            <Text style={styles.feedbackText}>{feedback}</Text>
-          </View>
+          <Animated.View
+            style={[
+              styles.feedbackBox,
+              feedbackType === "success" && styles.feedbackSuccess,
+              feedbackType === "error" && styles.feedbackError,
+              {
+                transform: [
+                  { translateX: feedbackType === "error" ? shakeTranslate : 0 },
+                  { scale: feedbackType === "success" ? popScale : 1 },
+                ],
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.feedbackText,
+                feedbackType === "success" && styles.feedbackTextSuccess,
+                feedbackType === "error" && styles.feedbackTextError,
+              ]}
+            >
+              {feedback}
+            </Text>
+          </Animated.View>
         ) : null}
 
         {/* Grid Card */}
@@ -244,7 +357,10 @@ export default function PeriodicTableGame() {
             <Text style={styles.selectionHint}>✓ Slot selected. Tap an element below to place it.</Text>
           )}
 
-          {gameComplete ? <Text style={styles.selectionHint}>✅ Progress tersimpan (jika login).</Text> : null}
+          {/* (optional) hint non-popup */}
+          {gameComplete ? (
+            <Text style={styles.selectionHint}>🏁 Selesai! Kamu bisa klik New Game kapan saja.</Text>
+          ) : null}
         </View>
 
         {/* Draggable Elements */}
@@ -279,16 +395,10 @@ export default function PeriodicTableGame() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0f1419",
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
+  container: { flex: 1, backgroundColor: "#0f1419" },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
+
   header: {
     paddingTop: 16,
     paddingHorizontal: 16,
@@ -297,41 +407,90 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 12,
   },
-  backButton: {
-    color: "#64b5f6",
-    fontSize: 16,
-    fontWeight: "600",
-    marginTop: 4,
-  },
-  headerTitle: {
+  backButton: { color: "#64b5f6", fontSize: 16, fontWeight: "600", marginTop: 4 },
+  headerTitle: { flex: 1 },
+  title: { color: "#64b5f6", fontSize: 24, fontWeight: "700", marginBottom: 4 },
+  subtitle: { color: "#b0bec5", fontSize: 14 },
+
+  // ===== Completion modal =====
+  modalOverlay: {
     flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 18,
   },
-  title: {
-    color: "#64b5f6",
-    fontSize: 24,
-    fontWeight: "700",
-    marginBottom: 4,
+  modalCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "rgba(15, 20, 25, 0.98)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 193, 7, 0.35)",
+    padding: 16,
   },
-  subtitle: {
+  modalClose: {
+    position: "absolute",
+    right: 10,
+    top: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCloseText: { color: "#e3f2fd", fontWeight: "900", fontSize: 14 },
+  modalTitle: {
+    color: "#FFE082",
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center",
+    marginTop: 6,
+  },
+  modalSub: {
     color: "#b0bec5",
-    fontSize: 14,
+    textAlign: "center",
+    marginTop: 10,
+    fontWeight: "700",
   },
+  modalHint: {
+    color: "#b0bec5",
+    textAlign: "center",
+    marginTop: 10,
+    lineHeight: 18,
+  },
+  modalHintStrong: { color: "#64b5f6", fontWeight: "900" },
+
+  // ===== Feedback (untuk correct/incorrect) =====
   feedbackBox: {
     marginHorizontal: 16,
     marginBottom: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: "rgba(100, 181, 246, 0.15)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
-    borderColor: "rgba(100, 181, 246, 0.3)",
-    borderRadius: 8,
+    borderColor: "rgba(255,255,255,0.14)",
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  feedbackText: {
-    color: "#64b5f6",
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
+  feedbackText: { color: "#e3f2fd", fontSize: 14, fontWeight: "700", textAlign: "center" },
+
+  feedbackSuccess: {
+    backgroundColor: "rgba(76, 175, 80, 0.16)",
+    borderColor: "rgba(76, 175, 80, 0.45)",
   },
+  feedbackTextSuccess: { color: "#7CFF8A" },
+
+  feedbackError: {
+    backgroundColor: "rgba(244, 67, 54, 0.16)",
+    borderColor: "rgba(244, 67, 54, 0.45)",
+  },
+  feedbackTextError: { color: "#FF8A80" },
+
   gridCard: {
     marginHorizontal: 16,
     marginBottom: 20,
@@ -341,23 +500,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
-  gridTitle: {
-    color: "#64b5f6",
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  horizontalScroll: {
-    marginBottom: 12,
-  },
-  gridContainer: {
-    gap: 2,
-  },
-  row: {
-    flexDirection: "row",
-    gap: 2,
-  },
+  gridTitle: { color: "#64b5f6", fontSize: 16, fontWeight: "700", marginBottom: 12, textAlign: "center" },
+  horizontalScroll: { marginBottom: 12 },
+  gridContainer: { gap: 2 },
+  row: { flexDirection: "row", gap: 2 },
+
   cell: {
     backgroundColor: "rgba(100, 181, 246, 0.15)",
     borderWidth: 1,
@@ -381,25 +528,11 @@ const styles = StyleSheet.create({
     borderColor: "rgba(100, 181, 246, 0.4)",
     borderStyle: "solid",
   },
-  cellSymbol: {
-    color: "#e6f2ff",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  cellName: {
-    color: "#cfd8dc",
-    fontSize: 9,
-  },
-  cellPlaceholder: {
-    color: "rgba(100, 181, 246, 0.5)",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  cellSelected: {
-    backgroundColor: "rgba(100, 181, 246, 0.35)",
-    borderColor: "#64b5f6",
-    borderWidth: 2,
-  },
+  cellSymbol: { color: "#e6f2ff", fontSize: 12, fontWeight: "700" },
+  cellName: { color: "#cfd8dc", fontSize: 9 },
+  cellPlaceholder: { color: "rgba(100, 181, 246, 0.5)", fontSize: 16, fontWeight: "700" },
+  cellSelected: { backgroundColor: "rgba(100, 181, 246, 0.35)", borderColor: "#64b5f6", borderWidth: 2 },
+
   selectionHint: {
     color: "#b0bec5",
     fontSize: 12,
@@ -407,6 +540,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: "center",
   },
+
   dragCard: {
     marginHorizontal: 16,
     marginBottom: 20,
@@ -416,19 +550,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
-  dragTitle: {
-    color: "#64b5f6",
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 4,
-    textAlign: "center",
-  },
-  dragSubtitle: {
-    color: "#b0bec5",
-    fontSize: 12,
-    marginBottom: 12,
-    textAlign: "center",
-  },
+  dragTitle: { color: "#64b5f6", fontSize: 16, fontWeight: "700", marginBottom: 4, textAlign: "center" },
+  dragSubtitle: { color: "#b0bec5", fontSize: 12, marginBottom: 12, textAlign: "center" },
+
   dragGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -445,19 +569,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  dragElementDisabled: {
-    opacity: 0.4,
-  },
-  dragSymbol: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  dragName: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "600",
-  },
+  dragElementDisabled: { opacity: 0.4 },
+  dragSymbol: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  dragName: { color: "#fff", fontSize: 11, fontWeight: "600" },
+
   resetButton: {
     marginHorizontal: 16,
     paddingVertical: 12,
@@ -465,9 +580,5 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
   },
-  resetButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
+  resetButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 });
