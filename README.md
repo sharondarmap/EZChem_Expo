@@ -1,6 +1,7 @@
-# Welcome to EZChem
+# Welcome to EZChem💙🧪
 
 EZChem adalah platform pembelajaran kimia virtual yang dirancang khusus untuk membantu mahasiswa TPB ITB memahami konsep-konsep kimia dengan mudah dan menyenangkan. Aplikasi ini mengintegrasikan teori pembelajaran dengan praktik interaktif melalui berbagai modul pembelajaran, flashcard, kuis komprehensif, dan game edukatif (Periodic Table Select & Tap, Acid-Base Mixer). Dibangun dengan teknologi React Native dengan Expo untuk mobile—EZChem menyediakan pengalaman pembelajaran yang konsisten dan responsif di semua perangkat. Dengan fitur progress tracking real-time, sinkronisasi data lintas platform, dan UI yang intuitif dengan dark theme, pengguna dapat belajar kapan saja dan di mana saja. EZChem menggabungkan keamanan (JWT authentication), reliabilitas (SQLite database), dan usability terbaik untuk mendukung perjalanan belajar mahasiswa menuju pemahaman kimia yang lebih mendalam.
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started
