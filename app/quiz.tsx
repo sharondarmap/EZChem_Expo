@@ -139,10 +139,11 @@ export default function Quiz() {
     <SafeAreaView style={styles.container}>
       {screen === "modules" && (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
+          <View style={styles.modulesHeader}>
             <Text style={styles.title}>Pilih Modul Kuis</Text>
             <Text style={styles.subtitle}>Pilih modul yang ingin Anda uji</Text>
           </View>
+
 
           <View style={styles.modulesGrid}>
             {QUIZ_MODULES.map((moduleName, index) => (
@@ -281,10 +282,38 @@ export default function Quiz() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0f1419" },
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
-  header: { alignItems: "center", paddingVertical: 20, paddingHorizontal: 16 },
-  title: { fontSize: 28, color: "#64b5f6", fontWeight: "700", marginBottom: 8 },
-  subtitle: { fontSize: 14, color: "#b0bec5", textAlign: "center" },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  header: {
+    paddingTop: 2,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    alignItems: "center",
+  },
+
+  modulesHeader: {
+    alignItems: "center",
+    paddingTop: 2,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+  },
+
+  title: {
+    fontSize: 26,
+    color: "#93c5fd",
+    fontWeight: "900",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+
+  subtitle: {
+    fontSize: 14,
+    color: "#b0bec5",
+    textAlign: "center",
+    maxWidth: 520,
+  },
+
 
   modulesGrid: {
     flexDirection: "row",
@@ -298,14 +327,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.12)",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     alignItems: "center",
   },
   moduleTitle: {
-    fontSize: 14,
-    color: "#64b5f6",
-    fontWeight: "700",
+    fontSize: 16,
+    color: "#93c5fd",
+    fontWeight: "800",
     marginBottom: 8,
     textAlign: "center",
   },
@@ -397,7 +426,7 @@ const styles = StyleSheet.create({
   resultActions: { width: "100%", gap: 12 },
 
   primaryBtn: {
-    backgroundColor: "#42a5f5",
+    backgroundColor: "#60a5fa",
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: "center",

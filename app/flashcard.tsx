@@ -52,13 +52,9 @@ export default function FlashcardScreen() {
   const reportProgressDebounced = useDebouncedCallback(async (mod: string, cur: number, total: number) => {
     try {
       if (!mod || total <= 0) return;
-      // backend expects current <= total, current >= 0
       const safeCur = Math.max(0, Math.min(cur, total));
       await reportFlashcardProgress(mod, safeCur, total);
-      // kalau mau debug:
-      // console.log("✅ reported flashcard:", mod, safeCur, total);
     } catch (e) {
-      // jangan bikin crash UI; cukup warn
       console.warn("⚠️ reportFlashcardProgress failed:", (e as any)?.message || e);
     }
   }, 600);
@@ -74,10 +70,9 @@ export default function FlashcardScreen() {
   useEffect(() => {
     if (!selectedModule) return;
     if (!moduleTitle) return;
+
     const total = cards.length;
     const cur = total > 0 ? index + 1 : 0;
-
-    // debounce biar klik next/prev cepat gak spam
     reportProgressDebounced(moduleTitle, cur, total);
   }, [selectedModule, moduleTitle, index, cards.length, reportProgressDebounced]);
 
@@ -93,13 +88,11 @@ export default function FlashcardScreen() {
     }).start();
   };
 
-  // front: 0 -> 180
   const frontRotateY = rotate.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "180deg"],
   });
 
-  // back: 180 -> 360
   const backRotateY = rotate.interpolate({
     inputRange: [0, 1],
     outputRange: ["180deg", "360deg"],
@@ -120,7 +113,6 @@ export default function FlashcardScreen() {
   };
 
   const backToModules = () => {
-    // optional: report sekali sebelum keluar (biar pasti kesave)
     if (selectedModule && moduleTitle && cards.length > 0) {
       reportProgressDebounced(moduleTitle, index + 1, cards.length);
     }
@@ -129,27 +121,30 @@ export default function FlashcardScreen() {
 
   // ============= UI: MODE PILIH MODUL =============
   if (!selectedModule) {
-    const numCols = width >= 700 ? 2 : 1;
+    // ✅ BIKIN 2 KOLOM DI HP JUGA (kayak quiz)
+    const numCols = 2;
 
     return (
       <LinearGradient colors={["#0b1224", "#0f172a", "#0b1020"]} style={styles.bg}>
         <View style={styles.screen}>
-          <Text style={styles.header}>Flashcard Kimia</Text>
-          <Text style={styles.desc}>Pilih modul. Tiap modul berisi flashcard untuk bantu belajar.</Text>
+          <View style={styles.modulesHeader}>
+            <Text style={styles.header}>Flashcard Kimia</Text>
+            <Text style={styles.desc}>Pilih modul. Tiap modul berisi flashcard untuk bantu belajar.</Text>
+          </View>
 
           <FlatList
             data={FLASHCARD_MODULES}
             key={numCols}
             numColumns={numCols}
             keyExtractor={(m) => m.key}
-            columnWrapperStyle={numCols > 1 ? { gap: 12 } : undefined}
-            contentContainerStyle={{ paddingBottom: 24, gap: 12 }}
+            columnWrapperStyle={{ gap: 12 }}
+            contentContainerStyle={styles.modulesList}
             renderItem={({ item }) => (
               <Pressable
                 onPress={() => setSelectedModule(item.key)}
                 style={({ pressed }) => [
                   styles.moduleCard,
-                  numCols > 1 ? { flex: 1 } : { width: "100%" },
+                  { flex: 1 }, // ✅ biar 2 kolom rata
                   pressed && { opacity: 0.85 },
                 ]}
               >
@@ -188,9 +183,7 @@ export default function FlashcardScreen() {
             <Animated.View
               style={[
                 styles.cardFace,
-                {
-                  transform: [{ perspective: 1200 }, { rotateY: frontRotateY }],
-                },
+                { transform: [{ perspective: 1200 }, { rotateY: frontRotateY }] },
               ]}
             >
               <Text style={styles.cardText}>{current?.question ?? "Belum ada data flashcard untuk modul ini."}</Text>
@@ -201,9 +194,7 @@ export default function FlashcardScreen() {
               style={[
                 styles.cardFace,
                 styles.cardBack,
-                {
-                  transform: [{ perspective: 1200 }, { rotateY: backRotateY }],
-                },
+                { transform: [{ perspective: 1200 }, { rotateY: backRotateY }] },
               ]}
             >
               <Text style={[styles.cardText, styles.cardBackText]}>{current?.answer ?? "—"}</Text>
@@ -255,8 +246,31 @@ const styles = StyleSheet.create({
   bg: { flex: 1 },
   screen: { flex: 1, padding: 16 },
 
-  header: { color: "#93c5fd", fontSize: 26, fontWeight: "900", marginTop: 6 },
-  desc: { color: "#b0bec5", marginTop: 8, marginBottom: 16 },
+  modulesHeader: {
+    alignItems: "center",
+    marginTop: 6,
+    marginBottom: 16,
+  },
+
+  header: {
+    color: "#93c5fd",
+    fontSize: 26,
+    fontWeight: "900",
+    marginTop: 6,
+    textAlign: "center",
+  },
+
+  desc: {
+    color: "#b0bec5",
+    marginTop: 8,
+    textAlign: "center",
+    maxWidth: 520,
+  },
+
+  modulesList: {
+    paddingBottom: 24,
+    gap: 12,
+  },
 
   moduleCard: {
     backgroundColor: "rgba(255,255,255,0.06)",
@@ -264,13 +278,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 16,
     padding: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  moduleTitle: { color: "#93c5fd", fontSize: 16, fontWeight: "800" },
-  moduleHint: { color: "#b0bec5", marginTop: 8 },
+
+  moduleTitle: { color: "#93c5fd", fontSize: 16, fontWeight: "800", textAlign: "center" },
 
   primaryPill: {
     marginTop: 14,
-    alignSelf: "flex-start",
+    alignSelf: "center",
+    textAlign: "center",
     backgroundColor: "#60a5fa",
     paddingHorizontal: 14,
     paddingVertical: 8,

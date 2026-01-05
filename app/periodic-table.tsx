@@ -313,9 +313,9 @@ export default function PeriodicTable() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#0f172a' },
   container: { flex: 1, paddingHorizontal: 16, backgroundColor: '#0f172a' },
-  header: { alignItems: 'center', marginVertical: 20 },
-  title: { fontSize: 28, color: '#64b5f6', fontWeight: '700', marginBottom: 8 },
-  subtitle: { color: '#b0bec5', fontSize: 13 },
+  header: { alignItems: 'center', marginVertical: 2 },
+  title: { fontSize: 26, color: '#64b5f6', fontWeight: '700', marginBottom: 8 },
+  subtitle: { color: '#b0bec5', fontSize: 13, marginBottom: 16, textAlign: 'center' },
 
   // Horizontal scroll for periodic table
   horizontalScroll: {

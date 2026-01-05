@@ -43,10 +43,16 @@ export default function Pembelajaran() {
     }
   };
 
-  const renderItem = ({ item }: { item: Module }) => {
+  const renderItem = ({ item, index }: { item: Module; index: number }) => {
+    const moduleNumber = index + 1;
+
     return (
       <View style={styles.card}>
-        <Text style={styles.title}>{item.title}</Text>
+        <Text style={styles.moduleTitle}>
+          <Text style={styles.modulePrefix}>Modul {moduleNumber}: </Text>
+          {item.title}
+        </Text>
+
         <Text style={styles.subtitle}>{item.description}</Text>
 
         <View style={styles.row}>
@@ -74,8 +80,12 @@ export default function Pembelajaran() {
 
   return (
     <View style={styles.screen}>
+      <View style={styles.headerWrap}>
       <Text style={styles.header}>Pembelajaran</Text>
-      <Text style={styles.desc}>Pilih modul, lalu buka Simulasi / Video / PDF.</Text>
+      <Text style={styles.desc}>
+        Pilih modul, lalu buka Simulasi / Video / PDF.
+      </Text>
+    </View>
 
       <FlatList
         data={MODULES}
@@ -89,9 +99,42 @@ export default function Pembelajaran() {
 }
 
 const styles = StyleSheet.create({
+  moduleTitle: {
+    color: "#93c5fd",   
+    fontSize: 16,       
+    fontWeight: "800",
+    lineHeight: 22,
+  },
+
+  modulePrefix: {
+    color: "#93c5fd",
+    fontSize: 16,      
+    fontWeight: "800",
+    lineHeight: 22,
+  },
+
   screen: { flex: 1, backgroundColor: "#0f172a", padding: 16 },
-  header: { color: "#64b5f6", fontSize: 24, fontWeight: "800", marginTop: 4 },
-  desc: { color: "#b0bec5", marginTop: 6, marginBottom: 14 },
+  headerWrap: {
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 16,
+  },
+
+  header: {
+    color: "#93c5fd",
+    fontSize: 26,
+    fontWeight: "900",
+    marginBottom: 6,
+    textAlign: "center",
+  },
+
+  desc: {
+    color: "#b0bec5",
+    fontSize: 14,
+    textAlign: "center",
+    maxWidth: 420, // biar enak dibaca di tablet
+  },
+
 
   list: { paddingBottom: 24 },
 
@@ -103,7 +146,6 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
   },
-  title: { color: "#fff", fontSize: 16, fontWeight: "800" },
   subtitle: { color: "#b0bec5", marginTop: 6, marginBottom: 10 },
 
   row: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
