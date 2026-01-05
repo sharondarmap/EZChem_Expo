@@ -562,7 +562,7 @@ export default function Profile() {
                 value={String(learningSum.totalActions)}
                 chip={`${learningSum.uniqueModules} modul`}
               />
-              <StatCard label="Rata2 flashcard" value={`${flashcardsAvgPct}%`} chip={`${flashcards.length} modul`} />
+              <StatCard label="Rata-rata flashcard" value={`${flashcardsAvgPct}%`} chip={`${flashcards.length} modul`} />
               <StatCard label="Kuis (best)" value={`${quizSum.bestPct}%`} chip={`avg ${quizSum.avgPct}%`} />
               <StatCard label="Games selesai" value={String(gameSum.totalCompletions)} chip="total completion" />
             </View>
