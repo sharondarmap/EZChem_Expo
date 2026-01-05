@@ -8,6 +8,33 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 type QuizScreen = "modules" | "start" | "question" | "result";
 
+/** ===== Helpers: shuffle options + keep correctAnswer consistent ===== */
+function shuffleArray<T>(arr: T[]) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function shuffleQuestionOptions(q: { options: string[]; correctAnswer: number }) {
+  const correctText = q.options[q.correctAnswer];
+  const shuffledOptions = shuffleArray(q.options);
+  const newCorrectIndex = shuffledOptions.findIndex((opt) => opt === correctText);
+
+  return {
+    ...q,
+    options: shuffledOptions,
+    correctAnswer: newCorrectIndex,
+  };
+}
+
+function prepareQuestions(rawQuestions: typeof QUIZ_QUESTIONS) {
+  // acak opsi tiap soal
+  return rawQuestions.map(shuffleQuestionOptions);
+}
+
 export default function Quiz() {
   const router = useRouter();
 
@@ -31,10 +58,11 @@ export default function Quiz() {
   const handleModuleSelect = (moduleIndex: number) => {
     setSelectedModule(moduleIndex);
 
-    const moduleQuestions =
-      moduleIndex === -1 ? QUIZ_QUESTIONS : getQuestionsByModule(moduleIndex);
+    const moduleQuestions = moduleIndex === -1 ? QUIZ_QUESTIONS : getQuestionsByModule(moduleIndex);
 
-    setQuestions(moduleQuestions);
+    // ✅ shuffle opsi jawaban (biar correctAnswer ikut ke-update)
+    setQuestions(prepareQuestions(moduleQuestions));
+
     setScreen("start");
 
     // reset attempt state
@@ -118,11 +146,7 @@ export default function Quiz() {
 
           <View style={styles.modulesGrid}>
             {QUIZ_MODULES.map((moduleName, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.moduleCard}
-                onPress={() => handleModuleSelect(index)}
-              >
+              <TouchableOpacity key={index} style={styles.moduleCard} onPress={() => handleModuleSelect(index)}>
                 <Text style={styles.moduleTitle}>{moduleName}</Text>
                 <Text style={styles.moduleQuestions}>10 Soal</Text>
               </TouchableOpacity>
@@ -179,10 +203,7 @@ export default function Quiz() {
                     styles.answerOption,
                     selectedAnswer === index && styles.answerSelected,
                     answered && index === currentQuestion.correctAnswer && styles.answerCorrect,
-                    answered &&
-                      selectedAnswer === index &&
-                      index !== currentQuestion.correctAnswer &&
-                      styles.answerIncorrect,
+                    answered && selectedAnswer === index && index !== currentQuestion.correctAnswer && styles.answerIncorrect,
                   ]}
                 >
                   <Text
@@ -190,10 +211,7 @@ export default function Quiz() {
                       styles.answerText,
                       selectedAnswer === index && styles.answerSelectedText,
                       answered && index === currentQuestion.correctAnswer && styles.answerCorrectText,
-                      answered &&
-                        selectedAnswer === index &&
-                        index !== currentQuestion.correctAnswer &&
-                        styles.answerIncorrectText,
+                      answered && selectedAnswer === index && index !== currentQuestion.correctAnswer && styles.answerIncorrectText,
                     ]}
                   >
                     {option}
