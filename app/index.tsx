@@ -1,13 +1,26 @@
-import { useRouter } from 'expo-router';
-import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+// app/index.tsx
+import { useRouter } from "expo-router";
+import React, { useEffect } from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { isLoggedIn } from "../src/services/auth";
 
 export default function Index() {
   const router = useRouter();
+
   useEffect(() => {
-    // replace root with welcome so root path is always matched
-    const t = setTimeout(() => router.replace('/welcome'), 0);
-    return () => clearTimeout(t);
+    let mounted = true;
+    (async () => {
+      try {
+        const ok = await isLoggedIn();
+        if (!mounted) return;
+        router.replace(ok ? "/welcome" : "/login");
+      } catch {
+        router.replace("/login");
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   return (
@@ -18,6 +31,6 @@ export default function Index() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  title: { color: '#fff', fontSize: 16 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#0f172a" },
+  title: { color: "#fff", fontSize: 16 },
 });

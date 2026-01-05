@@ -1,4 +1,4 @@
-// profile.tsx
+// app/profile.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
@@ -13,13 +13,12 @@ import {
   NativeScrollEvent,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import { getToken, getUser, logout } from "../src/services/auth";
+import { API } from "../src/services/api";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const PAD = 16;
-
-const API_BASE_URL = "https://tugas1pawm-production-7a65.up.railway.app";
-// const API_BASE_URL = "http://localhost:8000";
 
 type ProfilePayload = {
   user?: {
@@ -123,30 +122,41 @@ function prettyGameName(key: string) {
   return key.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// ===== Fetch Backend =====
+// ===== Fetch Backend via API.ts =====
 async function fetchProfileFromBackend(): Promise<ProfilePayload> {
   const token = await getToken();
   if (!token) throw new Error("Token tidak ditemukan. Silakan login.");
 
-  const res = await fetch(`${API_BASE_URL}/profile`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  // 1) coba ambil /profile dulu
+  const prof = (await API.fetchJSON("/profile", { method: "GET", auth: true })) as ProfilePayload;
 
-  const text = await res.text();
-  let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
+  // 2) kalau backend belum ngirim progress di /profile, fallback ke endpoint progress
+  const needLearning = !Array.isArray(prof.learning);
+  const needFlashcards = !Array.isArray(prof.flashcards);
+  const needQuizzes = !Array.isArray(prof.quizzes);
+  const needGames = !Array.isArray(prof.games);
+
+  const out: ProfilePayload = { ...prof };
+
+  // Format fallback: endpoint kamu yg lama return { ok, count, data: [...] }
+  if (needLearning) {
+    const r = await API.fetchJSON("/progress/learning?limit=100", { method: "GET", auth: true });
+    out.learning = r?.data ?? [];
+  }
+  if (needFlashcards) {
+    const r = await API.fetchJSON("/progress/flashcard?limit=100", { method: "GET", auth: true });
+    out.flashcards = r?.data ?? [];
+  }
+  if (needQuizzes) {
+    const r = await API.fetchJSON("/progress/quiz?limit=100", { method: "GET", auth: true });
+    out.quizzes = r?.data ?? [];
+  }
+  if (needGames) {
+    const r = await API.fetchJSON("/progress/game?limit=100", { method: "GET", auth: true });
+    out.games = r?.data ?? [];
   }
 
-  if (!res.ok) {
-    const msg =
-      (data && (data.detail || data.message || data.error)) || `${res.status} ${res.statusText}`;
-    throw new Error(msg);
-  }
-
-  return data as ProfilePayload;
+  return out;
 }
 
 /** ===== Skeleton shimmer (tanpa library) ===== */
@@ -197,6 +207,8 @@ function SkeletonCard() {
 }
 
 export default function Profile() {
+  const router = useRouter();
+
   const [userLocal, setUserLocal] = useState<any>(null);
   const [payload, setPayload] = useState<ProfilePayload | null>(null);
 
@@ -218,9 +230,25 @@ export default function Profile() {
   const [tabsFadeLeft, setTabsFadeLeft] = useState(false);
   const [tabsFadeRight, setTabsFadeRight] = useState(false);
 
+  const enforceAuth = async () => {
+    const token = await getToken();
+    if (!token) {
+      router.replace("/login");
+      return false;
+    }
+    return true;
+  };
+
   const loadAll = async () => {
     setBackendWarning(null);
     setLoading(true);
+
+    const ok = await enforceAuth();
+    if (!ok) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const u = await getUser();
       setUserLocal(u);
@@ -228,11 +256,19 @@ export default function Profile() {
       try {
         const p = await fetchProfileFromBackend();
         setPayload(p);
-      } catch {
+      } catch (e: any) {
+        const msg = String(e?.message || "");
+        const status = (e as any)?.status;
+
+        // token invalid/expired
+        if (status === 401 || /401|unauthorized|token/i.test(msg)) {
+          await logout();
+          router.replace("/login");
+          return;
+        }
+
         setPayload(null);
-        setBackendWarning(
-          "Progress dari backend belum bisa dimuat (token masih demo / backend menolak). UI tetap bisa kamu cek."
-        );
+        setBackendWarning(`Progress dari backend belum bisa dimuat. (${msg || "Unknown error"})`);
       }
     } finally {
       setLoading(false);
@@ -248,6 +284,7 @@ export default function Profile() {
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onRefresh = async () => {
@@ -283,8 +320,6 @@ export default function Profile() {
     return Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length);
   }, [flashcards]);
 
-  const loggedIn = !!userLocal;
-
   const snapToIndex = (i: number) => {
     const clamped = Math.max(0, Math.min(TABS.length - 1, i));
     setTabIndex(clamped);
@@ -314,13 +349,10 @@ export default function Profile() {
     const x = e.nativeEvent.contentOffset.x;
     const i = Math.round(x / SCREEN_W);
     setTabIndex(i);
-
-    // Sinkronin tabs bar saat swipe pager
     requestAnimationFrame(() => snapToIndex(i));
   };
 
   const onTabsContentSizeChange = (w: number) => {
-    // kalau konten lebih lebar dari layar => bisa di scroll
     const can = w > SCREEN_W - PAD * 2;
     setTabsCanScroll(can);
     setTabsFadeLeft(false);
@@ -363,22 +395,7 @@ export default function Profile() {
             <SectionTitle title="Flashcard" subtitle="Progres terbaru per modul" />
             <GlassCard>
               {flashcards.length === 0 ? (
-                <>
-                  <EmptyState text="Belum ada progres flashcard." />
-                  <View style={{ height: 12 }} />
-                  {[1, 2].map((_, i) => (
-                    <View key={i} style={{ marginBottom: 14, opacity: 0.55 }}>
-                      <View style={styles.progressTop}>
-                        <Text style={styles.rowTitle}>Modul contoh</Text>
-                        <Text style={styles.progressPct}>0%</Text>
-                      </View>
-                      <View style={styles.progressTrack}>
-                        <View style={[styles.progressFill, { width: "0%" }]} />
-                      </View>
-                      <Text style={styles.progressSub}>0 / 0 kartu</Text>
-                    </View>
-                  ))}
-                </>
+                <EmptyState text="Belum ada progres flashcard." />
               ) : (
                 flashcards.map((it, idx) => {
                   const total = Math.max(1, Number(it.total || 0));
@@ -487,7 +504,7 @@ export default function Profile() {
           <View style={{ flex: 1 }}>
             <Text style={styles.profileTitle}>Profil</Text>
             <Text style={styles.profileName} numberOfLines={1}>
-              {fullName || (loggedIn ? "Pengguna" : "Guest")}
+              {fullName || "Pengguna"}
             </Text>
             <Text style={styles.profileMeta} numberOfLines={1}>
               {email}
@@ -495,20 +512,21 @@ export default function Profile() {
             <Text style={styles.profileMeta}>Terdaftar • {formatDateID(createdAt)}</Text>
           </View>
 
-          {loggedIn && (
-            <Pressable onPress={logout} style={({ pressed }) => [styles.logoutBtn, pressed && { opacity: 0.85 }]}>
-              <Text style={styles.logoutText}>Keluar</Text>
-            </Pressable>
-          )}
+          <Pressable
+            onPress={async () => {
+              await logout();
+              router.replace("/login");
+            }}
+            style={({ pressed }) => [styles.logoutBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Text style={styles.logoutText}>Keluar</Text>
+          </Pressable>
         </View>
 
         {backendWarning ? (
           <View style={styles.warningCard}>
             <Text style={styles.warningTitle}>Info</Text>
             <Text style={styles.warningText}>{backendWarning}</Text>
-            <Text style={styles.warningTextSmall}>
-              Nanti kalau login sudah pakai token asli backend, progress akan kebaca otomatis.
-            </Text>
           </View>
         ) : null}
 
@@ -576,7 +594,10 @@ export default function Profile() {
                         ]}
                       >
                         <Text style={[styles.segmentIcon, active && styles.segmentIconActive]}>{t.icon}</Text>
-                        <Text style={[styles.segmentTextScroll, active && styles.segmentTextScrollActive]} numberOfLines={1}>
+                        <Text
+                          style={[styles.segmentTextScroll, active && styles.segmentTextScrollActive]}
+                          numberOfLines={1}
+                        >
                           {t.label}
                         </Text>
                       </Pressable>
@@ -601,9 +622,7 @@ export default function Profile() {
                 )}
               </View>
 
-              <Text style={styles.swipeHint}>
-                {loggedIn ? "Geser kanan/kiri untuk melihat progres." : "Kamu belum login — ini preview template progress 🙂"}
-              </Text>
+              <Text style={styles.swipeHint}>Geser kanan/kiri untuk melihat progres.</Text>
             </View>
 
             {/* ===== Pager (FULL width, no cut) ===== */}
@@ -616,7 +635,7 @@ export default function Profile() {
               showsHorizontalScrollIndicator={false}
               onMomentumScrollEnd={onMomentumEnd}
               scrollEventThrottle={16}
-              style={{ marginHorizontal: -PAD }} // ✅ fix kepotong (tetap)
+              style={{ marginHorizontal: -PAD }}
               onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
                 useNativeDriver: true,
               })}
@@ -759,7 +778,6 @@ const styles = StyleSheet.create({
   },
   warningTitle: { color: "#93c5fd", fontWeight: "900", marginBottom: 6 },
   warningText: { color: "#b0bec5" },
-  warningTextSmall: { color: "#9aa9b3", marginTop: 8, fontSize: 12 },
 
   statsRow: {
     flexDirection: "row",
@@ -791,7 +809,7 @@ const styles = StyleSheet.create({
 
   swipeHint: { color: "#b0bec5", marginTop: 10, marginBottom: 12 },
 
-  // ===== Segmented tabs (scrollable) + fade =====
+  // Segmented tabs (scrollable) + fade
   segmentWrapFixed: {
     padding: 6,
     borderRadius: 999,
@@ -837,7 +855,7 @@ const styles = StyleSheet.create({
   fadeLeft: { left: 0 },
   fadeRight: { right: 0 },
 
-  // ===== Pager page (full width + padding) =====
+  // Pager page
   page: {
     width: SCREEN_W,
     paddingHorizontal: PAD,
@@ -899,10 +917,7 @@ const styles = StyleSheet.create({
   dotActive: { backgroundColor: "#60a5fa" },
 
   // Skeleton
-  skelBase: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
-  },
+  skelBase: { backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" },
   skelShine: {
     position: "absolute",
     left: 0,

@@ -1,21 +1,17 @@
-import { QUIZ_MODULES, QUIZ_QUESTIONS, getQuestionsByModule } from '@/src/data/quiz';
-import { API } from '@/src/services/api';
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+// app/quiz.tsx
+import { QUIZ_MODULES, QUIZ_QUESTIONS, getQuestionsByModule } from "@/src/data/quiz";
+import { reportQuizResult } from "@/src/services/progress";
+import { useRouter } from "expo-router";
+import React, { useMemo, useState } from "react";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-type QuizScreen = 'modules' | 'start' | 'question' | 'result';
+type QuizScreen = "modules" | "start" | "question" | "result";
 
 export default function Quiz() {
   const router = useRouter();
-  const [screen, setScreen] = useState<QuizScreen>('modules');
+
+  const [screen, setScreen] = useState<QuizScreen>("modules");
   const [selectedModule, setSelectedModule] = useState<number | null>(null);
   const [questions, setQuestions] = useState<typeof QUIZ_QUESTIONS>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -23,11 +19,30 @@ export default function Quiz() {
   const [answered, setAnswered] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
 
+  // ✅ guard biar POST hasil kuis cuma sekali per attempt
+  const [resultReported, setResultReported] = useState(false);
+
+  const moduleLabel = useMemo(() => {
+    if (selectedModule === null) return "";
+    if (selectedModule === -1) return "Kuis Semua Modul";
+    return QUIZ_MODULES[selectedModule] ?? `Modul ${selectedModule + 1}`;
+  }, [selectedModule]);
+
   const handleModuleSelect = (moduleIndex: number) => {
     setSelectedModule(moduleIndex);
-    const moduleQuestions = moduleIndex === -1 ? QUIZ_QUESTIONS : getQuestionsByModule(moduleIndex);
+
+    const moduleQuestions =
+      moduleIndex === -1 ? QUIZ_QUESTIONS : getQuestionsByModule(moduleIndex);
+
     setQuestions(moduleQuestions);
-    setScreen('start');
+    setScreen("start");
+
+    // reset attempt state
+    setCurrentQuestionIndex(0);
+    setScore(0);
+    setAnswered(false);
+    setSelectedAnswer(null);
+    setResultReported(false);
   };
 
   const handleStartQuiz = () => {
@@ -35,47 +50,46 @@ export default function Quiz() {
     setScore(0);
     setAnswered(false);
     setSelectedAnswer(null);
-    setScreen('question');
+    setResultReported(false);
+    setScreen("question");
   };
 
   const handleAnswerSelect = (optionIndex: number) => {
     if (answered) return;
+
     setSelectedAnswer(optionIndex);
     setAnswered(true);
 
     const currentQuestion = questions[currentQuestionIndex];
     if (optionIndex === currentQuestion.correctAnswer) {
-      setScore(score + 1);
+      setScore((s) => s + 1);
+    }
+  };
+
+  const trackProgress = async () => {
+    if (resultReported) return;
+    if (!questions.length) return;
+
+    try {
+      setResultReported(true);
+
+      // ✅ backend progress.py butuh: module, score, total
+      await reportQuizResult(moduleLabel || "Kuis", score, questions.length);
+    } catch (error) {
+      // kalau gagal, boleh dicoba lagi kalau user restart attempt
+      setResultReported(false);
+      console.log("Progress tracking failed:", error);
     }
   };
 
   const handleNextQuestion = () => {
     if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setCurrentQuestionIndex((i) => i + 1);
       setAnswered(false);
       setSelectedAnswer(null);
     } else {
-      trackProgress();
-      setScreen('result');
-    }
-  };
-
-  const trackProgress = async () => {
-    const moduleName = selectedModule === -1 ? 'all-modules' : `module-${selectedModule}`;
-    const percentage = Math.round((score / questions.length) * 100);
-
-    try {
-      await API.fetchJSON('/progress/quiz', {
-        method: 'POST',
-        body: JSON.stringify({
-          module: moduleName,
-          score: score,
-          total: questions.length,
-          percentage: percentage,
-        }),
-      });
-    } catch (error) {
-      console.log('Progress tracking failed:', error);
+      void trackProgress();
+      setScreen("result");
     }
   };
 
@@ -86,16 +100,16 @@ export default function Quiz() {
   };
 
   const handleBackToModules = () => {
-    setScreen('modules');
+    setScreen("modules");
     setSelectedModule(null);
   };
 
   const currentQuestion = questions[currentQuestionIndex];
-  const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+  const progress = questions.length ? ((currentQuestionIndex + 1) / questions.length) * 100 : 0;
 
   return (
     <SafeAreaView style={styles.container}>
-      {screen === 'modules' && (
+      {screen === "modules" && (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Text style={styles.title}>Pilih Modul Kuis</Text>
@@ -115,23 +129,18 @@ export default function Quiz() {
             ))}
           </View>
 
-          <TouchableOpacity
-            style={styles.allModulesBtn}
-            onPress={() => handleModuleSelect(-1)}
-          >
+          <TouchableOpacity style={styles.allModulesBtn} onPress={() => handleModuleSelect(-1)}>
             <Text style={styles.allModulesBtnText}>Kuis Semua Modul (110 Soal)</Text>
           </TouchableOpacity>
         </ScrollView>
       )}
 
-      {screen === 'start' && (
+      {screen === "start" && (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Text style={styles.title}>Kuis Kimia</Text>
             <Text style={styles.subtitle}>
-              {selectedModule === -1
-                ? 'Semua Modul - 110 Soal'
-                : `${QUIZ_MODULES[selectedModule || 0]} - 10 Soal`}
+              {selectedModule === -1 ? "Semua Modul - 110 Soal" : `${moduleLabel} - 10 Soal`}
             </Text>
           </View>
 
@@ -146,7 +155,7 @@ export default function Quiz() {
         </ScrollView>
       )}
 
-      {screen === 'question' && currentQuestion && (
+      {screen === "question" && currentQuestion && (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <View style={styles.quizHeader}>
             <Text style={styles.questionCounter}>
@@ -170,7 +179,10 @@ export default function Quiz() {
                     styles.answerOption,
                     selectedAnswer === index && styles.answerSelected,
                     answered && index === currentQuestion.correctAnswer && styles.answerCorrect,
-                    answered && selectedAnswer === index && index !== currentQuestion.correctAnswer && styles.answerIncorrect,
+                    answered &&
+                      selectedAnswer === index &&
+                      index !== currentQuestion.correctAnswer &&
+                      styles.answerIncorrect,
                   ]}
                 >
                   <Text
@@ -178,7 +190,10 @@ export default function Quiz() {
                       styles.answerText,
                       selectedAnswer === index && styles.answerSelectedText,
                       answered && index === currentQuestion.correctAnswer && styles.answerCorrectText,
-                      answered && selectedAnswer === index && index !== currentQuestion.correctAnswer && styles.answerIncorrectText,
+                      answered &&
+                        selectedAnswer === index &&
+                        index !== currentQuestion.correctAnswer &&
+                        styles.answerIncorrectText,
                     ]}
                   >
                     {option}
@@ -198,17 +213,18 @@ export default function Quiz() {
           {answered && (
             <TouchableOpacity style={styles.primaryBtn} onPress={handleNextQuestion}>
               <Text style={styles.primaryBtnText}>
-                {currentQuestionIndex === questions.length - 1 ? 'Lihat Hasil' : 'Selanjutnya'}
+                {currentQuestionIndex === questions.length - 1 ? "Lihat Hasil" : "Selanjutnya"}
               </Text>
             </TouchableOpacity>
           )}
         </ScrollView>
       )}
 
-      {screen === 'result' && (
+      {screen === "result" && (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Text style={styles.title}>Hasil Kuis</Text>
+            <Text style={styles.subtitle}>{moduleLabel}</Text>
           </View>
 
           <View style={styles.resultContainer}>
@@ -218,15 +234,15 @@ export default function Quiz() {
             </View>
 
             <Text style={styles.resultMessage}>
-              {score / questions.length >= 0.8
-                ? '🎉 Luar Biasa!'
-                : score / questions.length >= 0.6
-                  ? '✓ Bagus!'
-                  : '△ Perlu Belajar Lagi'}
+              {questions.length > 0 && score / questions.length >= 0.8
+                ? "🎉 Luar Biasa!"
+                : questions.length > 0 && score / questions.length >= 0.6
+                ? "✓ Bagus!"
+                : "△ Perlu Belajar Lagi"}
             </Text>
 
             <Text style={styles.percentageText}>
-              Persentase: {Math.round((score / questions.length) * 100)}%
+              Persentase: {questions.length ? Math.round((score / questions.length) * 100) : 0}%
             </Text>
 
             <View style={styles.resultActions}>
@@ -245,142 +261,137 @@ export default function Quiz() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f1419' },
+  container: { flex: 1, backgroundColor: "#0f1419" },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 40 },
-  header: { alignItems: 'center', paddingVertical: 20, paddingHorizontal: 16 },
-  title: { fontSize: 28, color: '#64b5f6', fontWeight: '700', marginBottom: 8 },
-  subtitle: { fontSize: 14, color: '#b0bec5', textAlign: 'center' },
+  header: { alignItems: "center", paddingVertical: 20, paddingHorizontal: 16 },
+  title: { fontSize: 28, color: "#64b5f6", fontWeight: "700", marginBottom: 8 },
+  subtitle: { fontSize: 14, color: "#b0bec5", textAlign: "center" },
 
-  // Modules grid
   modulesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
     paddingHorizontal: 16,
     marginBottom: 20,
   },
   moduleCard: {
-    width: '48%',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    width: "48%",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 12,
     padding: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
-  moduleTitle: { fontSize: 14, color: '#64b5f6', fontWeight: '700', marginBottom: 8, textAlign: 'center' },
-  moduleQuestions: { fontSize: 12, color: '#b0bec5' },
+  moduleTitle: {
+    fontSize: 14,
+    color: "#64b5f6",
+    fontWeight: "700",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  moduleQuestions: { fontSize: 12, color: "#b0bec5" },
   allModulesBtn: {
     marginHorizontal: 16,
-    backgroundColor: '#42a5f5',
+    backgroundColor: "#42a5f5",
     paddingVertical: 12,
     borderRadius: 10,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 20,
   },
-  allModulesBtnText: { color: '#fff', fontWeight: '700' },
+  allModulesBtnText: { color: "#fff", fontWeight: "700" },
 
-  // Quiz start
   actionButtons: { gap: 12, marginHorizontal: 16, marginTop: 20 },
 
-  // Quiz header
   quizHeader: { paddingHorizontal: 16, marginBottom: 20 },
-  questionCounter: { fontSize: 14, color: '#64b5f6', fontWeight: '600', marginBottom: 8 },
+  questionCounter: { fontSize: 14, color: "#64b5f6", fontWeight: "600", marginBottom: 8 },
   progressBar: {
     height: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderRadius: 4,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
-  progressFill: { height: '100%', backgroundColor: '#64b5f6' },
+  progressFill: { height: "100%", backgroundColor: "#64b5f6" },
 
-  // Question container
   questionContainer: {
     marginHorizontal: 16,
     marginBottom: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 12,
     padding: 16,
   },
-  questionText: { fontSize: 16, color: '#e3f2fd', fontWeight: '600', marginBottom: 16, lineHeight: 22 },
+  questionText: {
+    fontSize: 16,
+    color: "#e3f2fd",
+    fontWeight: "600",
+    marginBottom: 16,
+    lineHeight: 22,
+  },
 
-  // Answer options
   answerOptions: { gap: 10, marginBottom: 16 },
   answerOption: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: "rgba(255, 255, 255, 0.15)",
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  answerSelected: {
-    backgroundColor: 'rgba(100, 181, 246, 0.2)',
-    borderColor: '#64b5f6',
-  },
-  answerCorrect: {
-    backgroundColor: 'rgba(76, 175, 80, 0.2)',
-    borderColor: '#4caf50',
-  },
-  answerIncorrect: {
-    backgroundColor: 'rgba(244, 67, 54, 0.2)',
-    borderColor: '#f44336',
-  },
-  answerText: { fontSize: 14, color: '#e3f2fd' },
-  answerSelectedText: { color: '#64b5f6', fontWeight: '600' },
-  answerCorrectText: { color: '#4caf50', fontWeight: '600' },
-  answerIncorrectText: { color: '#f44336', fontWeight: '600' },
+  answerSelected: { backgroundColor: "rgba(100, 181, 246, 0.2)", borderColor: "#64b5f6" },
+  answerCorrect: { backgroundColor: "rgba(76, 175, 80, 0.2)", borderColor: "#4caf50" },
+  answerIncorrect: { backgroundColor: "rgba(244, 67, 54, 0.2)", borderColor: "#f44336" },
+  answerText: { fontSize: 14, color: "#e3f2fd" },
+  answerSelectedText: { color: "#64b5f6", fontWeight: "600" },
+  answerCorrectText: { color: "#4caf50", fontWeight: "600" },
+  answerIncorrectText: { color: "#f44336", fontWeight: "600" },
 
-  // Explanation
   explanationBox: {
-    backgroundColor: 'rgba(100, 181, 246, 0.15)',
+    backgroundColor: "rgba(100, 181, 246, 0.15)",
     borderWidth: 1,
-    borderColor: 'rgba(100, 181, 246, 0.3)',
+    borderColor: "rgba(100, 181, 246, 0.3)",
     borderRadius: 10,
     padding: 12,
     marginTop: 12,
   },
-  explanationTitle: { fontSize: 12, color: '#64b5f6', fontWeight: '700', marginBottom: 6 },
-  explanationText: { fontSize: 13, color: '#b0bec5', lineHeight: 18 },
+  explanationTitle: { fontSize: 12, color: "#64b5f6", fontWeight: "700", marginBottom: 6 },
+  explanationText: { fontSize: 13, color: "#b0bec5", lineHeight: 18 },
 
-  // Result
-  resultContainer: { alignItems: 'center', marginTop: 20, marginHorizontal: 16 },
+  resultContainer: { alignItems: "center", marginTop: 20, marginHorizontal: 16 },
   scoreCircle: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'linear-gradient(45deg, #64b5f6, #42a5f5)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(100, 181, 246, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 20,
     borderWidth: 2,
-    borderColor: '#64b5f6',
+    borderColor: "#64b5f6",
   },
-  finalScore: { fontSize: 40, color: '#fff', fontWeight: '700' },
-  scoreTotal: { fontSize: 14, color: '#b0bec5' },
-  resultMessage: { fontSize: 18, color: '#e3f2fd', fontWeight: '600', marginBottom: 12 },
-  percentageText: { fontSize: 14, color: '#b0bec5', marginBottom: 24 },
+  finalScore: { fontSize: 40, color: "#fff", fontWeight: "700" },
+  scoreTotal: { fontSize: 14, color: "#b0bec5" },
+  resultMessage: { fontSize: 18, color: "#e3f2fd", fontWeight: "600", marginBottom: 12 },
+  percentageText: { fontSize: 14, color: "#b0bec5", marginBottom: 24 },
 
-  resultActions: { width: '100%', gap: 12 },
+  resultActions: { width: "100%", gap: 12 },
 
-  // Buttons
   primaryBtn: {
-    backgroundColor: '#42a5f5',
+    backgroundColor: "#42a5f5",
     paddingVertical: 12,
     borderRadius: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
-  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  primaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   secondaryBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: "rgba(255, 255, 255, 0.2)",
     paddingVertical: 12,
     borderRadius: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
-  secondaryBtnText: { color: '#e3f2fd', fontWeight: '700', fontSize: 14 },
+  secondaryBtnText: { color: "#e3f2fd", fontWeight: "700", fontSize: 14 },
 });

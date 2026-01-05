@@ -1,14 +1,9 @@
-import { ELEMENTS } from '@/src/data/elements';
-import { API } from '@/src/services/api';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
-} from 'react-native';
+// app/periodic-table-game.tsx
+import { ELEMENTS } from "@/src/data/elements";
+import { reportGameProgress } from "@/src/services/progress";
+import { useRouter } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 interface EmptySlot {
   row: number;
@@ -21,33 +16,39 @@ type TableLayout = ((typeof ELEMENTS)[0] | null)[][];
 
 export default function PeriodicTableGame() {
   const router = useRouter();
+
   const [tableLayout, setTableLayout] = useState<TableLayout | null>(null);
   const [emptySlots, setEmptySlots] = useState<EmptySlot[]>([]);
   const [draggableElements, setDraggableElements] = useState<(typeof ELEMENTS)[0][]>([]);
   const [placedElements, setPlacedElements] = useState<Record<string, number>>({});
-  const [feedback, setFeedback] = useState('');
+  const [feedback, setFeedback] = useState("");
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [gameComplete, setGameComplete] = useState(false);
 
+  // ✅ guard supaya report completion cuma sekali per “run”
+  const [reportedCompletion, setReportedCompletion] = useState(false);
+
   useEffect(() => {
     initializeGame();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const initializeGame = () => {
     setPlacedElements({});
-    setFeedback('');
+    setFeedback("");
     setGameComplete(false);
     setSelectedSlot(null);
+    setReportedCompletion(false);
 
     // Create 2D layout (7 periods x 18 groups)
-    const tableLayout: (typeof ELEMENTS[0] | null)[][] = Array(7)
+    const layout: (typeof ELEMENTS[0] | null)[][] = Array(7)
       .fill(null)
       .map(() => Array(18).fill(null));
 
     // Place elements in the layout
     ELEMENTS.forEach((el) => {
       let col = el.group - 1;
-      let row = el.period - 1;
+      const row = el.period - 1;
 
       if (el.an === 2) {
         col = 17; // Helium in group 18
@@ -58,7 +59,7 @@ export default function PeriodicTableGame() {
       }
 
       if (row < 7 && col < 18) {
-        tableLayout[row][col] = el;
+        layout[row][col] = el;
       }
     });
 
@@ -71,10 +72,10 @@ export default function PeriodicTableGame() {
       elementsToHide.push(...availableToHide.splice(idx, 1));
     }
 
-    // Create empty slots in tableLayout
+    // Create empty slots in layout
     const slots: EmptySlot[] = [];
     elementsToHide.forEach((el) => {
-      let row = el.period - 1;
+      const row = el.period - 1;
       let col = el.group - 1;
 
       if (el.an === 2) {
@@ -84,15 +85,28 @@ export default function PeriodicTableGame() {
       }
 
       if (row < 7 && col < 18) {
-        tableLayout[row][col] = null;
+        layout[row][col] = null;
         slots.push({ row, col, correctAn: el.an, element: el });
       }
     });
 
     setEmptySlots(slots);
     setDraggableElements(elementsToHide.sort(() => Math.random() - 0.5));
-    // Store tableLayout in state for rendering
-    setTableLayout(tableLayout);
+    setTableLayout(layout);
+  };
+
+  const maybeReportCompletion = async () => {
+    if (reportedCompletion) return;
+
+    try {
+      setReportedCompletion(true);
+      // ✅ metric harus "completed" supaya kebaca di profile.tsx (filter completed)
+      // ✅ game name dibikin konsisten juga
+      await reportGameProgress("periodic-table", "completed", 1);
+    } catch {
+      // kalau gagal, boleh dibuka lagi untuk retry di run yang sama
+      setReportedCompletion(false);
+    }
   };
 
   const handleDropElement = (an: number, slotKey: string) => {
@@ -100,32 +114,23 @@ export default function PeriodicTableGame() {
     if (!slot) return;
 
     if (an === slot.correctAn) {
-      setPlacedElements({ ...placedElements, [slotKey]: an });
-      setFeedback('✓ Correct!');
-      setSelectedSlot(null);
-      
-      // Check if all slots are filled
       const newPlaced = { ...placedElements, [slotKey]: an };
+      setPlacedElements(newPlaced);
+      setFeedback("✓ Correct!");
+      setSelectedSlot(null);
+
+      // Check if all slots are filled
       if (Object.keys(newPlaced).length === emptySlots.length) {
         setGameComplete(true);
-        setFeedback('🎉 You completed the periodic table!');
-        
-        // Track progress
-        API.fetchJSON('/progress/game', {
-          method: 'POST',
-          body: JSON.stringify({
-            game: 'periodic-table-drag-drop',
-            metric: 'game_completed',
-            value: 1,
-          }),
-        }).catch(() => {});
+        setFeedback("🎉 You completed the periodic table!");
+        void maybeReportCompletion();
       }
     } else {
-      setFeedback('✗ Incorrect. Try again!');
+      setFeedback("✗ Incorrect. Try again!");
     }
 
     setTimeout(() => {
-      setFeedback('');
+      setFeedback("");
     }, 1500);
   };
 
@@ -142,6 +147,11 @@ export default function PeriodicTableGame() {
   };
 
   const cellSize = 56;
+
+  const remainingElements = useMemo(() => {
+    const placed = new Set(Object.values(placedElements));
+    return draggableElements.filter((el) => !placed.has(el.an));
+  }, [draggableElements, placedElements]);
 
   return (
     <View style={styles.container}>
@@ -167,11 +177,8 @@ export default function PeriodicTableGame() {
         {/* Grid Card */}
         <View style={styles.gridCard}>
           <Text style={styles.gridTitle}>Fill in the Periodic Table</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={true}
-            style={styles.horizontalScroll}
-          >
+
+          <ScrollView horizontal showsHorizontalScrollIndicator style={styles.horizontalScroll}>
             <View style={styles.gridContainer}>
               {Array(7)
                 .fill(null)
@@ -186,7 +193,7 @@ export default function PeriodicTableGame() {
                         const isPlaced = placedElements[slotKey];
                         const isSelected = selectedSlot === slotKey;
 
-                        // Empty slot (draggable position)
+                        // Empty slot (clickable position)
                         if (slot) {
                           return (
                             <TouchableOpacity
@@ -202,9 +209,7 @@ export default function PeriodicTableGame() {
                             >
                               {isPlaced ? (
                                 <>
-                                  <Text style={styles.cellSymbol}>
-                                    {slot.element.symbol}
-                                  </Text>
+                                  <Text style={styles.cellSymbol}>{slot.element.symbol}</Text>
                                   <Text style={styles.cellName}>{slot.element.an}</Text>
                                 </>
                               ) : (
@@ -219,11 +224,7 @@ export default function PeriodicTableGame() {
                           return (
                             <View
                               key={slotKey}
-                              style={[
-                                styles.cell,
-                                styles.filledCell,
-                                { width: cellSize, height: cellSize },
-                              ]}
+                              style={[styles.cell, styles.filledCell, { width: cellSize, height: cellSize }]}
                             >
                               <Text style={styles.cellSymbol}>{element.symbol}</Text>
                               <Text style={styles.cellName}>{element.an}</Text>
@@ -232,49 +233,39 @@ export default function PeriodicTableGame() {
                         }
 
                         // Empty space (gap)
-                        return (
-                          <View
-                            key={slotKey}
-                            style={[styles.cell, { width: cellSize, height: cellSize }]}
-                          />
-                        );
+                        return <View key={slotKey} style={[styles.cell, { width: cellSize, height: cellSize }]} />;
                       })}
                   </View>
                 ))}
             </View>
           </ScrollView>
+
           {selectedSlot && (
-            <Text style={styles.selectionHint}>
-              ✓ Slot selected. Tap an element below to place it.
-            </Text>
+            <Text style={styles.selectionHint}>✓ Slot selected. Tap an element below to place it.</Text>
           )}
+
+          {gameComplete ? <Text style={styles.selectionHint}>✅ Progress tersimpan (jika login).</Text> : null}
         </View>
 
         {/* Draggable Elements */}
         <View style={styles.dragCard}>
           <Text style={styles.dragTitle}>Elements to Place</Text>
           <Text style={styles.dragSubtitle}>
-            {selectedSlot ? 'Tap an element to place it' : 'Tap a cell first, then tap an element'}
+            {selectedSlot ? "Tap an element to place it" : "Tap a cell first, then tap an element"}
           </Text>
+
           <View style={styles.dragGrid}>
-            {draggableElements
-              .filter(
-                (el) => !Object.values(placedElements).includes(el.an)
-              )
-              .map((el) => (
-                <TouchableOpacity
-                  key={el.an}
-                  style={[
-                    styles.dragElement,
-                    !selectedSlot && styles.dragElementDisabled,
-                  ]}
-                  onPress={() => handlePlaceElement(el.an)}
-                  disabled={!selectedSlot}
-                >
-                  <Text style={styles.dragSymbol}>{el.symbol}</Text>
-                  <Text style={styles.dragName}>{el.an}</Text>
-                </TouchableOpacity>
-              ))}
+            {remainingElements.map((el) => (
+              <TouchableOpacity
+                key={el.an}
+                style={[styles.dragElement, !selectedSlot && styles.dragElementDisabled]}
+                onPress={() => handlePlaceElement(el.an)}
+                disabled={!selectedSlot}
+              >
+                <Text style={styles.dragSymbol}>{el.symbol}</Text>
+                <Text style={styles.dragName}>{el.an}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
@@ -290,7 +281,7 @@ export default function PeriodicTableGame() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f1419',
+    backgroundColor: "#0f1419",
   },
   scroll: {
     flex: 1,
@@ -302,27 +293,27 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: 20,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: 12,
   },
   backButton: {
-    color: '#64b5f6',
+    color: "#64b5f6",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 4,
   },
   headerTitle: {
     flex: 1,
   },
   title: {
-    color: '#64b5f6',
+    color: "#64b5f6",
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 4,
   },
   subtitle: {
-    color: '#b0bec5',
+    color: "#b0bec5",
     fontSize: 14,
   },
   feedbackBox: {
@@ -330,32 +321,32 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: 'rgba(100, 181, 246, 0.15)',
+    backgroundColor: "rgba(100, 181, 246, 0.15)",
     borderWidth: 1,
-    borderColor: 'rgba(100, 181, 246, 0.3)',
+    borderColor: "rgba(100, 181, 246, 0.3)",
     borderRadius: 8,
   },
   feedbackText: {
-    color: '#64b5f6',
+    color: "#64b5f6",
     fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
+    fontWeight: "600",
+    textAlign: "center",
   },
   gridCard: {
     marginHorizontal: 16,
     marginBottom: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 16,
     padding: 16,
   },
   gridTitle: {
-    color: '#64b5f6',
+    color: "#64b5f6",
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 12,
-    textAlign: 'center',
+    textAlign: "center",
   },
   horizontalScroll: {
     marginBottom: 12,
@@ -364,119 +355,119 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   row: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 2,
   },
   cell: {
-    backgroundColor: 'rgba(100, 181, 246, 0.15)',
+    backgroundColor: "rgba(100, 181, 246, 0.15)",
     borderWidth: 1,
-    borderColor: 'rgba(100, 181, 246, 0.25)',
+    borderColor: "rgba(100, 181, 246, 0.25)",
     borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   emptyCell: {
-    borderStyle: 'dashed',
-    borderColor: 'rgba(100, 181, 246, 0.45)',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderStyle: "dashed",
+    borderColor: "rgba(100, 181, 246, 0.45)",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
   },
   filledCell: {
-    backgroundColor: 'rgba(100, 181, 246, 0.22)',
-    borderColor: 'rgba(100, 181, 246, 0.4)',
-    borderStyle: 'solid',
+    backgroundColor: "rgba(100, 181, 246, 0.22)",
+    borderColor: "rgba(100, 181, 246, 0.4)",
+    borderStyle: "solid",
   },
   cellFilled: {
-    backgroundColor: 'rgba(100, 181, 246, 0.22)',
-    borderColor: 'rgba(100, 181, 246, 0.4)',
-    borderStyle: 'solid',
+    backgroundColor: "rgba(100, 181, 246, 0.22)",
+    borderColor: "rgba(100, 181, 246, 0.4)",
+    borderStyle: "solid",
   },
   cellSymbol: {
-    color: '#e6f2ff',
+    color: "#e6f2ff",
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   cellName: {
-    color: '#cfd8dc',
+    color: "#cfd8dc",
     fontSize: 9,
   },
   cellPlaceholder: {
-    color: 'rgba(100, 181, 246, 0.5)',
+    color: "rgba(100, 181, 246, 0.5)",
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   cellSelected: {
-    backgroundColor: 'rgba(100, 181, 246, 0.35)',
-    borderColor: '#64b5f6',
+    backgroundColor: "rgba(100, 181, 246, 0.35)",
+    borderColor: "#64b5f6",
     borderWidth: 2,
   },
   selectionHint: {
-    color: '#b0bec5',
+    color: "#b0bec5",
     fontSize: 12,
-    fontStyle: 'italic',
+    fontStyle: "italic",
     marginTop: 12,
-    textAlign: 'center',
+    textAlign: "center",
   },
   dragCard: {
     marginHorizontal: 16,
     marginBottom: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 16,
     padding: 16,
   },
   dragTitle: {
-    color: '#64b5f6',
+    color: "#64b5f6",
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 4,
-    textAlign: 'center',
+    textAlign: "center",
   },
   dragSubtitle: {
-    color: '#b0bec5',
+    color: "#b0bec5",
     fontSize: 12,
     marginBottom: 12,
-    textAlign: 'center',
+    textAlign: "center",
   },
   dragGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
     gap: 10,
   },
   dragElement: {
     width: 70,
     height: 70,
-    backgroundColor: '#42a5f5',
+    backgroundColor: "#42a5f5",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: "rgba(255, 255, 255, 0.2)",
     borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   dragElementDisabled: {
     opacity: 0.4,
   },
   dragSymbol: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   dragName: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   resetButton: {
     marginHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#42a5f5',
+    backgroundColor: "#42a5f5",
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   resetButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });

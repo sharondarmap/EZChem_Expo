@@ -15,12 +15,24 @@ import {
   FlashcardModuleKey,
   MODULE_NAMES,
 } from "../src/data/flashcards";
+import { reportFlashcardProgress } from "../src/services/progress";
 
 const { width } = Dimensions.get("window");
 
+// kecilin spam request
+function useDebouncedCallback<T extends (...args: any[]) => void>(fn: T, delay = 500) {
+  const t = useRef<any>(null);
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+
+  return (...args: Parameters<T>) => {
+    if (t.current) clearTimeout(t.current);
+    t.current = setTimeout(() => fnRef.current(...args), delay);
+  };
+}
+
 export default function FlashcardScreen() {
-  const [selectedModule, setSelectedModule] =
-    useState<FlashcardModuleKey | null>(null);
+  const [selectedModule, setSelectedModule] = useState<FlashcardModuleKey | null>(null);
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
 
@@ -33,8 +45,23 @@ export default function FlashcardScreen() {
 
   const current = cards[index];
 
-  const progressPct =
-    cards.length > 0 ? Math.round(((index + 1) / cards.length) * 100) : 0;
+  const progressPct = cards.length > 0 ? Math.round(((index + 1) / cards.length) * 100) : 0;
+
+  // === helper: kirim progress ke backend ===
+  const moduleTitle = selectedModule ? MODULE_NAMES[selectedModule] : "";
+  const reportProgressDebounced = useDebouncedCallback(async (mod: string, cur: number, total: number) => {
+    try {
+      if (!mod || total <= 0) return;
+      // backend expects current <= total, current >= 0
+      const safeCur = Math.max(0, Math.min(cur, total));
+      await reportFlashcardProgress(mod, safeCur, total);
+      // kalau mau debug:
+      // console.log("✅ reported flashcard:", mod, safeCur, total);
+    } catch (e) {
+      // jangan bikin crash UI; cukup warn
+      console.warn("⚠️ reportFlashcardProgress failed:", (e as any)?.message || e);
+    }
+  }, 600);
 
   // Reset saat ganti modul
   useEffect(() => {
@@ -42,6 +69,17 @@ export default function FlashcardScreen() {
     setFlipped(false);
     rotate.setValue(0);
   }, [selectedModule, rotate]);
+
+  // ✅ REPORT: tiap kali masuk modul / pindah index, kirim progress
+  useEffect(() => {
+    if (!selectedModule) return;
+    if (!moduleTitle) return;
+    const total = cards.length;
+    const cur = total > 0 ? index + 1 : 0;
+
+    // debounce biar klik next/prev cepat gak spam
+    reportProgressDebounced(moduleTitle, cur, total);
+  }, [selectedModule, moduleTitle, index, cards.length, reportProgressDebounced]);
 
   // Flip anim
   const flipCard = () => {
@@ -82,6 +120,10 @@ export default function FlashcardScreen() {
   };
 
   const backToModules = () => {
+    // optional: report sekali sebelum keluar (biar pasti kesave)
+    if (selectedModule && moduleTitle && cards.length > 0) {
+      reportProgressDebounced(moduleTitle, index + 1, cards.length);
+    }
     setSelectedModule(null);
   };
 
@@ -90,15 +132,10 @@ export default function FlashcardScreen() {
     const numCols = width >= 700 ? 2 : 1;
 
     return (
-      <LinearGradient
-        colors={["#0b1224", "#0f172a", "#0b1020"]}
-        style={styles.bg}
-      >
+      <LinearGradient colors={["#0b1224", "#0f172a", "#0b1020"]} style={styles.bg}>
         <View style={styles.screen}>
           <Text style={styles.header}>Flashcard Kimia</Text>
-          <Text style={styles.desc}>
-            Pilih modul. Tiap modul berisi flashcard untuk bantu belajar.
-          </Text>
+          <Text style={styles.desc}>Pilih modul. Tiap modul berisi flashcard untuk bantu belajar.</Text>
 
           <FlatList
             data={FLASHCARD_MODULES}
@@ -132,13 +169,9 @@ export default function FlashcardScreen() {
   // ============= UI: MODE FLASHCARD =============
   return (
     <LinearGradient colors={["#0b1224", "#0f172a", "#0b1020"]} style={styles.bg}>
-      {/* PENTING: ini jangan ditutup sebelum konten selesai */}
       <View style={styles.screen}>
         <View style={styles.headerStack}>
-          <Pressable
-            onPress={backToModules}
-            style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.85 }]}
-          >
+          <Pressable onPress={backToModules} style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.85 }]}>
             <Text style={styles.backBtnText}>Kembali</Text>
           </Pressable>
 
@@ -160,9 +193,7 @@ export default function FlashcardScreen() {
                 },
               ]}
             >
-              <Text style={styles.cardText}>
-                {current?.question ?? "Belum ada data flashcard untuk modul ini."}
-              </Text>
+              <Text style={styles.cardText}>{current?.question ?? "Belum ada data flashcard untuk modul ini."}</Text>
             </Animated.View>
 
             {/* BACK */}
@@ -175,9 +206,7 @@ export default function FlashcardScreen() {
                 },
               ]}
             >
-              <Text style={[styles.cardText, styles.cardBackText]}>
-                {current?.answer ?? "—"}
-              </Text>
+              <Text style={[styles.cardText, styles.cardBackText]}>{current?.answer ?? "—"}</Text>
             </Animated.View>
           </View>
         </Pressable>
@@ -196,9 +225,7 @@ export default function FlashcardScreen() {
             <Text style={styles.controlBtnText}>Sebelumnya</Text>
           </Pressable>
 
-          <Text style={styles.counter}>
-            {cards.length === 0 ? "0 / 0" : `${index + 1} / ${cards.length}`}
-          </Text>
+          <Text style={styles.counter}>{cards.length === 0 ? "0 / 0" : `${index + 1} / ${cards.length}`}</Text>
 
           <Pressable
             onPress={goNext}

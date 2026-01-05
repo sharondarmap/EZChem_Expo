@@ -1,18 +1,25 @@
 import React from "react";
-import {
-  Alert,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as Linking from "expo-linking";
 import { MODULES, Module } from "../src/data/modules";
 import { openPdf } from "../src/utils/openPdf";
+import { reportLearningProgress } from "../src/services/progress";
 
 export default function Pembelajaran() {
-  const openUrl = async (url: string) => {
+  const report = async (moduleTitle: string, action: string) => {
+    try {
+      if (!moduleTitle?.trim() || !action?.trim()) return;
+      await reportLearningProgress(moduleTitle, action);
+      // console.log("✅ learning progress:", moduleTitle, action);
+    } catch (e: any) {
+      console.warn("⚠️ reportLearningProgress failed:", e?.message ?? e);
+    }
+  };
+
+  const openUrl = async (url: string, m: Module, action: "simulasi" | "video") => {
+    // best-effort report
+    void report(m.title, action);
+
     try {
       const can = await Linking.canOpenURL(url);
       if (!can) {
@@ -26,6 +33,9 @@ export default function Pembelajaran() {
   };
 
   const onPressPdf = async (m: Module) => {
+    // best-effort report
+    void report(m.title, "pdf");
+
     try {
       await openPdf(m.pdf);
     } catch (e: any) {
@@ -42,22 +52,19 @@ export default function Pembelajaran() {
         <View style={styles.row}>
           <TouchableOpacity
             style={[styles.btn, styles.btnPrimary]}
-            onPress={() => openUrl(item.simulationUrl)}
+            onPress={() => openUrl(item.simulationUrl, item, "simulasi")}
           >
             <Text style={styles.btnText}>Simulasi</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.btn, styles.btnSecondary]}
-            onPress={() => openUrl(item.videoUrl)}
+            onPress={() => openUrl(item.videoUrl, item, "video")}
           >
             <Text style={styles.btnText}>Video</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.btn, styles.btnOutline]}
-            onPress={() => onPressPdf(item)}
-          >
+          <TouchableOpacity style={[styles.btn, styles.btnOutline]} onPress={() => onPressPdf(item)}>
             <Text style={styles.btnOutlineText}>PDF</Text>
           </TouchableOpacity>
         </View>
@@ -68,9 +75,7 @@ export default function Pembelajaran() {
   return (
     <View style={styles.screen}>
       <Text style={styles.header}>Pembelajaran</Text>
-      <Text style={styles.desc}>
-        Pilih modul, lalu buka Simulasi / Video / PDF.
-      </Text>
+      <Text style={styles.desc}>Pilih modul, lalu buka Simulasi / Video / PDF.</Text>
 
       <FlatList
         data={MODULES}
@@ -103,11 +108,7 @@ const styles = StyleSheet.create({
 
   row: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
 
-  btn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-  },
+  btn: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 },
   btnPrimary: { backgroundColor: "#60a5fa" },
   btnSecondary: { backgroundColor: "#547eb4ff" },
   btnOutline: { borderWidth: 1, borderColor: "#64b5f6" },
